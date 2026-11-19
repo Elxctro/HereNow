@@ -1,0 +1,352 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isValidUsername(name) {
+      return name is string && name.size() >= 2 && name.size() <= 24;
+    }
+
+    function roomMaxMembers(data) {
+      return ('maxMembers' in data) ? data.maxMembers : 2;
+    }
+
+    function isValidMemberList(members, maxSize) {
+      return members is list &&
+             members.size() >= 1 &&
+             members.size() <= maxSize &&
+             members[0] is string &&
+             members[0].size() >= 1 &&
+             members[0].size() <= 128 &&
+             (members.size() < 2 || (members[1] is string && members[1].size() >= 1 && members[1].size() <= 128));
+    }
+
+    function isValidInvitedEmails(emails) {
+      return emails is list &&
+             emails.size() <= 12 &&
+             (emails.size() == 0 || (emails[0] is string && emails[0].size() >= 3 && emails[0].size() <= 120));
+    }
+
+    function isInvitedByVerifiedEmail(data) {
+      return ('email_verified' in request.auth.token) &&
+             request.auth.token.email_verified == true &&
+             ('email' in request.auth.token) &&
+             (
+               ('invitedEmail' in data && data.invitedEmail == request.auth.token.email) ||
+               ('invitedEmails' in data && request.auth.token.email in data.invitedEmails)
+             );
+    }
+
+    function isPairMember(pairId) {
+      let roomPath = /databases/$(database)/documents/pairings/$(pairId);
+      return exists(roomPath) && request.auth.uid in get(roomPath).data.memberUids;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             isValidUsername(data.username) &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 60 &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 120)) &&
+             (!('activePairId' in data) || (data.activePairId is string && isValidId(data.activePairId))) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPairInvite(data) {
+      return isValidId(data.pairId) &&
+             data.creatorUid is string && data.creatorUid.size() >= 1 && data.creatorUid.size() <= 128 &&
+             isValidUsername(data.creatorUsername) &&
+             data.spaceName is string && data.spaceName.size() >= 1 && data.spaceName.size() <= 30 &&
+             (!('roomType' in data) || data.roomType in ['direct', 'group']) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidPairing(data) {
+      let maxM = roomMaxMembers(data);
+      return data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+             (!('roomType' in data) || data.roomType in ['direct', 'group']) &&
+             (!('maxMembers' in data) || (data.maxMembers is int && data.maxMembers >= 2 && data.maxMembers <= 12)) &&
+             (!('roomType' in data) || !('maxMembers' in data) || (data.roomType == 'direct' ? data.maxMembers == 2 : data.maxMembers <= 12)) &&
+             isValidMemberList(data.memberUids, maxM) &&
+             data.ownerUid in data.memberUids &&
+             data.spaceName is string && data.spaceName.size() >= 1 && data.spaceName.size() <= 30 &&
+             data.inviteCode is string && data.inviteCode.size() >= 6 && data.inviteCode.size() <= 16 &&
+             data.inviteCode.matches('^[A-Z0-9]+$') &&
+             (!('invitedEmail' in data) || (data.invitedEmail is string && data.invitedEmail.size() >= 3 && data.invitedEmail.size() <= 120)) &&
+             (!('invitedEmails' in data) || isValidInvitedEmails(data.invitedEmails)) &&
+             isValidUsername(data.ownerUsername) &&
+             (!('partnerUsername' in data) || isValidUsername(data.partnerUsername)) &&
+             (!('memberNames' in data) || (data.memberNames is map && data.memberNames.size() >= 1 && data.memberNames.size() <= 12)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidStatusButton(data) {
+      return data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+             isValidId(data.pairId) &&
+             isValidMemberList(data.memberUids, 12) &&
+             data.label is string && data.label.size() >= 1 && data.label.size() <= 30 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 160 &&
+             data.iconKey is string && data.iconKey.size() >= 1 && data.iconKey.size() <= 32 &&
+             data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 10000 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPartnerStatus(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             isValidId(data.pairId) &&
+             isValidMemberList(data.memberUids, 12) &&
+             isValidUsername(data.senderName) &&
+             isValidId(data.activeButtonId) &&
+             data.buttonLabel is string && data.buttonLabel.size() >= 1 && data.buttonLabel.size() <= 30 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 160 &&
+             data.iconKey is string && data.iconKey.size() >= 1 && data.iconKey.size() <= 32 &&
+             data.pingCount is int && data.pingCount >= 1 && data.pingCount <= 1000000000 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isOwnNameChange(prev, next, uid) {
+      return !('memberNames' in next) ||
+             (
+               uid in next.memberNames &&
+               isValidUsername(next.memberNames[uid]) &&
+               (('memberNames' in prev)
+                 ? next.memberNames.diff(prev.memberNames).affectedKeys().hasOnly([uid])
+                 : next.memberNames.keys().hasOnly([uid]))
+             );
+    }
+
+    function canUpdatePairing(pairId, prev, next, uid) {
+      let diffKeys = next.diff(prev).affectedKeys();
+      let configSame =
+        (('roomType' in prev) == ('roomType' in next)) &&
+        (!('roomType' in prev) || next.roomType == prev.roomType) &&
+        (('maxMembers' in prev) == ('maxMembers' in next)) &&
+        (!('maxMembers' in prev) || next.maxMembers == prev.maxMembers);
+      let baseValid =
+        isValidPairing(next) &&
+        next.ownerUid == prev.ownerUid &&
+        next.inviteCode == prev.inviteCode &&
+        next.createdAt == prev.createdAt &&
+        configSame;
+      let invitePath = /databases/$(database)/documents/pairInvites/$(prev.inviteCode);
+
+      return baseValid && (
+        // Action 1: New member joining via verified email invite or secret invite code
+        (
+          !(uid in prev.memberUids) &&
+          prev.memberUids.size() < roomMaxMembers(prev) &&
+          next.memberUids.size() == prev.memberUids.size() + 1 &&
+          next.memberUids.hasAll(prev.memberUids) &&
+          uid in next.memberUids &&
+          diffKeys.hasOnly(['memberUids', 'memberNames', 'partnerUsername', 'updatedAt']) &&
+          isOwnNameChange(prev, next, uid) &&
+          (isInvitedByVerifiedEmail(prev) || (exists(invitePath) && get(invitePath).data.pairId == pairId))
+        ) ||
+        // Action 2: Room owner editing settings or inviting emails
+        (
+          uid == prev.ownerUid &&
+          next.memberUids == prev.memberUids &&
+          diffKeys.hasOnly(['spaceName', 'invitedEmail', 'invitedEmails', 'ownerUsername', 'partnerUsername', 'memberNames', 'updatedAt']) &&
+          isOwnNameChange(prev, next, uid)
+        ) ||
+        // Action 3: Existing member editing room name or their own username
+        (
+          uid in prev.memberUids &&
+          uid != prev.ownerUid &&
+          next.memberUids == prev.memberUids &&
+          diffKeys.hasOnly(['spaceName', 'partnerUsername', 'memberNames', 'updatedAt']) &&
+          isOwnNameChange(prev, next, uid)
+        ) ||
+        // Action 4: Non-owner member leaving the room
+        (
+          uid in prev.memberUids &&
+          uid != prev.ownerUid &&
+          next.memberUids.size() == prev.memberUids.size() - 1 &&
+          !(uid in next.memberUids) &&
+          prev.memberUids.hasAll(next.memberUids) &&
+          diffKeys.hasOnly(['memberUids', 'memberNames', 'updatedAt']) &&
+          (!('memberNames' in prev) ||
+            (!(uid in next.memberNames) && next.memberNames.diff(prev.memberNames).affectedKeys().hasOnly([uid])))
+        )
+      );
+    }
+
+    // --- Collection Rules ---
+
+    // 1. User Profiles (strictly owner-only to isolate PII such as email)
+    match /users/{userId} {
+      allow get, list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.keys().hasAll(['userId', 'username', 'displayName', 'createdAt', 'updatedAt']) &&
+                       request.resource.data.keys().hasOnly(['userId', 'username', 'displayName', 'email', 'activePairId', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(request.resource.data);
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidUserProfile(request.resource.data) &&
+                       request.resource.data.userId == resource.data.userId &&
+                       request.resource.data.createdAt == resource.data.createdAt &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username', 'displayName', 'email', 'activePairId', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // 2. Secret Invite Lookups (direct get by secret code only; list strictly forbidden)
+    match /pairInvites/{inviteCode} {
+      allow get: if isSignedIn() && isValidId(inviteCode);
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+                       isValidId(inviteCode) &&
+                       inviteCode.size() >= 6 && inviteCode.size() <= 16 &&
+                       inviteCode.matches('^[A-Z0-9]+$') &&
+                       request.resource.data.creatorUid == request.auth.uid &&
+                       request.resource.data.keys().hasAll(['pairId', 'creatorUid', 'creatorUsername', 'spaceName', 'createdAt']) &&
+                       request.resource.data.keys().hasOnly(['pairId', 'creatorUid', 'creatorUsername', 'spaceName', 'roomType', 'createdAt']) &&
+                       isValidPairInvite(request.resource.data) &&
+                       exists(/databases/$(database)/documents/pairings/$(request.resource.data.pairId)) &&
+                       get(/databases/$(database)/documents/pairings/$(request.resource.data.pairId)).data.ownerUid == request.auth.uid;
+
+      allow update: if false;
+
+      allow delete: if isSignedIn() &&
+                       isValidId(inviteCode) &&
+                       (
+                         resource.data.creatorUid == request.auth.uid ||
+                         ((!('roomType' in resource.data) || resource.data.roomType == 'direct') &&
+                          isPairMember(resource.data.pairId))
+                       );
+    }
+
+    // 3. Strictly Isolated Private Rooms (1-on-1 Direct OR Multi-Member Group/Family)
+    match /pairings/{pairId} {
+      allow get: if isSignedIn() &&
+                    isValidId(pairId) &&
+                    (
+                      request.auth.uid in resource.data.memberUids ||
+                      isInvitedByVerifiedEmail(resource.data)
+                    );
+
+      allow list: if isSignedIn() &&
+                     (
+                       request.auth.uid in resource.data.memberUids ||
+                       isInvitedByVerifiedEmail(resource.data)
+                     );
+
+      allow create: if isSignedIn() &&
+                       isValidId(pairId) &&
+                       request.resource.data.ownerUid == request.auth.uid &&
+                       request.resource.data.memberUids.size() == 1 &&
+                       request.resource.data.memberUids[0] == request.auth.uid &&
+                       (!('memberNames' in request.resource.data) ||
+                        (request.resource.data.memberNames.keys().hasOnly([request.auth.uid]) &&
+                         isValidUsername(request.resource.data.memberNames[request.auth.uid]))) &&
+                       request.resource.data.keys().hasAll(['ownerUid', 'memberUids', 'spaceName', 'inviteCode', 'ownerUsername', 'createdAt', 'updatedAt']) &&
+                       request.resource.data.keys().hasOnly(['ownerUid', 'roomType', 'maxMembers', 'memberUids', 'memberNames', 'spaceName', 'inviteCode', 'invitedEmail', 'invitedEmails', 'ownerUsername', 'partnerUsername', 'createdAt', 'updatedAt']) &&
+                       isValidPairing(request.resource.data);
+
+      allow update: if isSignedIn() &&
+                       isValidId(pairId) &&
+                       canUpdatePairing(pairId, resource.data, request.resource.data, request.auth.uid);
+
+      allow delete: if isSignedIn() &&
+                       isValidId(pairId) &&
+                       (
+                         resource.data.ownerUid == request.auth.uid ||
+                         (roomMaxMembers(resource.data) == 2 && request.auth.uid in resource.data.memberUids)
+                       );
+
+      // 4. Custom Status Buttons inside a Private Room
+      match /buttons/{buttonId} {
+        allow get: if isSignedIn() && isValidId(pairId) && isValidId(buttonId) && isPairMember(pairId);
+
+        allow list: if isSignedIn() && request.auth.uid in resource.data.memberUids;
+
+        allow create: if isSignedIn() &&
+                         isValidId(pairId) &&
+                         isValidId(buttonId) &&
+                         request.resource.data.ownerUid == request.auth.uid &&
+                         request.resource.data.pairId == pairId &&
+                         request.resource.data.keys().hasAll(['ownerUid', 'pairId', 'memberUids', 'label', 'message', 'iconKey', 'sortOrder', 'createdAt', 'updatedAt']) &&
+                         request.resource.data.keys().hasOnly(['ownerUid', 'pairId', 'memberUids', 'label', 'message', 'iconKey', 'sortOrder', 'createdAt', 'updatedAt']) &&
+                         isValidStatusButton(request.resource.data) &&
+                         isPairMember(pairId) &&
+                         request.resource.data.memberUids == get(/databases/$(database)/documents/pairings/$(pairId)).data.memberUids;
+
+        allow update: if isSignedIn() &&
+                         isValidId(pairId) &&
+                         isValidId(buttonId) &&
+                         resource.data.ownerUid == request.auth.uid &&
+                         request.resource.data.ownerUid == resource.data.ownerUid &&
+                         request.resource.data.pairId == resource.data.pairId &&
+                         request.resource.data.createdAt == resource.data.createdAt &&
+                         isValidStatusButton(request.resource.data) &&
+                         isPairMember(pairId) &&
+                         request.resource.data.memberUids == get(/databases/$(database)/documents/pairings/$(pairId)).data.memberUids &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['label', 'message', 'iconKey', 'sortOrder', 'memberUids', 'updatedAt']);
+
+        allow delete: if isSignedIn() && isValidId(pairId) && isValidId(buttonId) && resource.data.ownerUid == request.auth.uid;
+      }
+
+      // 5. Real-time Member Live Status inside a Private Room
+      match /statuses/{userId} {
+        allow get: if isSignedIn() && isValidId(pairId) && isValidId(userId) && isPairMember(pairId);
+
+        allow list: if isSignedIn() && request.auth.uid in resource.data.memberUids;
+
+        allow create: if isSignedIn() &&
+                         isValidId(pairId) &&
+                         isValidId(userId) &&
+                         request.auth.uid == userId &&
+                         request.resource.data.userId == request.auth.uid &&
+                         request.resource.data.pairId == pairId &&
+                         request.resource.data.keys().hasAll(['userId', 'pairId', 'memberUids', 'senderName', 'activeButtonId', 'buttonLabel', 'message', 'iconKey', 'pingCount', 'createdAt', 'updatedAt']) &&
+                         request.resource.data.keys().hasOnly(['userId', 'pairId', 'memberUids', 'senderName', 'activeButtonId', 'buttonLabel', 'message', 'iconKey', 'pingCount', 'createdAt', 'updatedAt']) &&
+                         isValidPartnerStatus(request.resource.data) &&
+                         isPairMember(pairId) &&
+                         request.resource.data.memberUids == get(/databases/$(database)/documents/pairings/$(pairId)).data.memberUids;
+
+        allow update: if isSignedIn() &&
+                         isValidId(pairId) &&
+                         isValidId(userId) &&
+                         request.auth.uid == userId &&
+                         request.resource.data.userId == resource.data.userId &&
+                         request.resource.data.pairId == resource.data.pairId &&
+                         request.resource.data.createdAt == resource.data.createdAt &&
+                         isValidPartnerStatus(request.resource.data) &&
+                         isPairMember(pairId) &&
+                         request.resource.data.memberUids == get(/databases/$(database)/documents/pairings/$(pairId)).data.memberUids &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['senderName', 'activeButtonId', 'buttonLabel', 'message', 'iconKey', 'pingCount', 'memberUids', 'updatedAt']);
+
+        allow delete: if isSignedIn() && isValidId(pairId) && isValidId(userId) && request.auth.uid == userId;
+      }
+    }
+  }
+}

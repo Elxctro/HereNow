@@ -1,0 +1,6 @@
+{
+  "name": "HereNow",
+  "description": "A private, two-person status and location update tracker with custom quick-tap buttons, live partner status glow, and instant notifications.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

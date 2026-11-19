@@ -1,0 +1,261 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user account profile storing username, display name, optional email, and last selected private room.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated Firebase UID of the user."
+        },
+        "username": {
+          "type": "string",
+          "description": "Private handle shown to room members (2-24 characters)."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name from Google profile or user entry."
+        },
+        "email": {
+          "type": "string",
+          "description": "Optional Google email address, kept private to the owner."
+        },
+        "activePairId": {
+          "type": "string",
+          "description": "ID of the last selected private space or group room."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when last updated via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "username", "displayName", "createdAt", "updatedAt"]
+    },
+    "PairInvite": {
+      "title": "PairInvite",
+      "description": "Private invite code lookup mapping a secret invite code to a direct (2-person) or group/family room without exposing PII or member lists.",
+      "type": "object",
+      "properties": {
+        "pairId": {
+          "type": "string",
+          "description": "Target room document ID."
+        },
+        "creatorUid": {
+          "type": "string",
+          "description": "UID of the user who created the room invite."
+        },
+        "creatorUsername": {
+          "type": "string",
+          "description": "Private username of the creator."
+        },
+        "spaceName": {
+          "type": "string",
+          "description": "Name of the private space or group room (1-30 characters)."
+        },
+        "roomType": {
+          "type": "string",
+          "enum": ["direct", "group"],
+          "description": "Room mode: direct (max 2 members) or group (up to 12 members)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["pairId", "creatorUid", "creatorUsername", "spaceName", "createdAt"]
+    },
+    "PairingRoom": {
+      "title": "PairingRoom",
+      "description": "Strictly isolated private space supporting either 1-on-1 direct pairing (max 2) or private group/family rooms (up to 12 members).",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "description": "UID of the person who created the room."
+        },
+        "roomType": {
+          "type": "string",
+          "enum": ["direct", "group"],
+          "description": "Room mode: direct (1-on-1, max 2) or group (family/group, up to 12)."
+        },
+        "maxMembers": {
+          "type": "integer",
+          "description": "Maximum allowed members in this room (2 for direct, up to 12 for group)."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Bounded list of 1 to maxMembers (<= 12) member UIDs."
+        },
+        "memberNames": {
+          "type": "object",
+          "description": "Map of member UID to private username shown inside this room (1 to 12 entries)."
+        },
+        "spaceName": {
+          "type": "string",
+          "description": "Label for this private room (e.g., Partner, Family, Mom; 1-30 characters)."
+        },
+        "inviteCode": {
+          "type": "string",
+          "description": "Secret 6-16 character alphanumeric invite code."
+        },
+        "invitedEmail": {
+          "type": "string",
+          "description": "Optional lowercased Google email of a single invited person (legacy/direct)."
+        },
+        "invitedEmails": {
+          "type": "array",
+          "description": "Optional bounded list (<= 12) of lowercased Google emails invited to this room."
+        },
+        "ownerUsername": {
+          "type": "string",
+          "description": "Private username of the room creator."
+        },
+        "partnerUsername": {
+          "type": "string",
+          "description": "Optional private username of the joined partner (used in 1-on-1 rooms)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when last updated via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["ownerUid", "memberUids", "spaceName", "inviteCode", "ownerUsername", "createdAt", "updatedAt"]
+    },
+    "StatusButton": {
+      "title": "StatusButton",
+      "description": "Customizable quick-tap status button scoped strictly to one private room.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "description": "UID of the member who owns this status button."
+        },
+        "pairId": {
+          "type": "string",
+          "description": "Parent private room ID."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Denormalized bounded list (1-12) of room member UIDs for secure collection queries."
+        },
+        "label": {
+          "type": "string",
+          "description": "Short button label such as Gym, College, or Home (1-30 chars)."
+        },
+        "message": {
+          "type": "string",
+          "description": "Custom notification message broadcast to all other members of this room (1-160 chars)."
+        },
+        "iconKey": {
+          "type": "string",
+          "description": "Material icon identifier key."
+        },
+        "sortOrder": {
+          "type": "integer",
+          "description": "Display ordering index."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when last updated via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["ownerUid", "pairId", "memberUids", "label", "message", "iconKey", "sortOrder", "createdAt", "updatedAt"]
+    },
+    "PartnerStatus": {
+      "title": "PartnerStatus",
+      "description": "Real-time active status document for one member, scoped strictly to one private room.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the member whose live status this represents."
+        },
+        "pairId": {
+          "type": "string",
+          "description": "Parent private room ID."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Denormalized bounded list (1-12) of room member UIDs."
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Private username of the sender inside this room."
+        },
+        "activeButtonId": {
+          "type": "string",
+          "description": "ID of the button currently active."
+        },
+        "buttonLabel": {
+          "type": "string",
+          "description": "Label of the active status button."
+        },
+        "message": {
+          "type": "string",
+          "description": "Custom notification message attached to the active status."
+        },
+        "iconKey": {
+          "type": "string",
+          "description": "Icon key of the active button."
+        },
+        "pingCount": {
+          "type": "integer",
+          "description": "Monotonically incremented counter to trigger notifications even on repeat taps."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created via FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when last updated via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": ["userId", "pairId", "memberUids", "senderName", "activeButtonId", "buttonLabel", "message", "iconKey", "pingCount", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Owner-only user profile and last active room preference."
+    },
+    "/pairInvites/{inviteCode}": {
+      "schema": { "$ref": "#/entities/PairInvite" },
+      "description": "Direct-get-only secret invite code lookup documents."
+    },
+    "/pairings/{pairId}": {
+      "schema": { "$ref": "#/entities/PairingRoom" },
+      "description": "Strictly isolated private 1-on-1 and multi-member group/family rooms."
+    },
+    "/pairings/{pairId}/buttons/{buttonId}": {
+      "schema": { "$ref": "#/entities/StatusButton" },
+      "description": "Custom status buttons isolated per private room."
+    },
+    "/pairings/{pairId}/statuses/{userId}": {
+      "schema": { "$ref": "#/entities/PartnerStatus" },
+      "description": "Live active button status per member isolated per private room."
+    }
+  }
+}
